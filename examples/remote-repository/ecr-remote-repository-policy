@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+set -e
+
+REPOSITORY_NAME=${REPOSITORY_NAME}
+if [ -z ${REPOSITORY_NAME} ]; then
+  echo "Please provide your ecr repository name"
+  exit 1
+fi
+
+cat > /tmp/policy.json <<EOF
+{
+    "Version": "2008-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowCrossAccountPull",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": [
+                    "arn:aws:iam::428235295317:root",
+                    "arn:aws:iam::967276157215:root",
+                    "arn:aws:iam::693429498512:root"
+                ]
+            },
+            "Action": [
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage",
+                "ecr:BatchCheckLayerAvailability"
+            ]
+        }
+    ]
+}
+EOF
+aws ecr set-repository-policy --region ap-southeast-2 --repository-name $REPOSITORY_NAME --policy-text file:///tmp/policy.json
+rm -f /tmp/policy.json

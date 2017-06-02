@@ -1,0 +1,6 @@
+[
+  {
+    "ParameterKey": "S3BucketName",
+    "ParameterValue": "myob-ex-central-development-cluster-backup"
+  }
+]

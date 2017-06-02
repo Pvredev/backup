@@ -1,0 +1,99 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: etcd-main-backup
+  namespace: kube-system
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: etcd-backup-script
+  namespace: kube-system
+data:
+  backup.sh: |
+    #!/bin/bash
+
+    BACKUP_S3_BUCKET=${BACKUP_S3_BUCKET}
+    BACKUP_S3_OBJECT=${BACKUP_S3_OBJECT}_$(date '+%d-%m-%Y_%H:%M:%S')
+
+    if  [ -z $BACKUP_S3_BUCKET ]; then
+        echo "Please provided S3_BUCKET."
+        exit 1
+    fi
+
+    if  [ -z $BACKUP_S3_OBJECT ]; then
+        echo "Please provided BACKUP_S3_OBJECT."
+        exit 1
+    fi
+
+    KEYS=$(etcdctl ls --recursive -p)
+    rm -f /tmp/etcd.properties
+
+    for KEY in $KEYS; do
+      # Skip etcd directories
+      if [ "${KEY: -1}" == "/" ]; then continue; fi
+      echo "$KEY=$(etcdctl get $KEY)"  >> /tmp/etcd.properties
+    done
+
+    aws s3 cp --acl private --sse aws:kms --sse-kms-key-id $BACKUP_KMS_ID /tmp/etcd.properties s3://$BACKUP_S3_BUCKET/$BACKUP_S3_OBJECT
+    exit 0
+
+---
+
+apiVersion: batch/v2alpha1
+kind: CronJob
+metadata:
+  name: etcd-main-backup
+  namespace: kube-system
+spec:
+  startingDeadlineSeconds: 500
+  schedule: "*/60 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          name: etcd-main-backup
+        spec:
+          hostNetwork: true
+          serviceAccountName: etcd-main-backup
+          containers:
+          - name: etcd-main-backup
+            image: myobplatform/aws-etcdctl:v1.0.0
+            volumeMounts:
+            - name: etcd-backup-script
+              mountPath: /script
+            command: ["/bin/bash"]
+            args: ["-c", "chmod +x /script/backup.sh && /script/backup.sh"]
+            env:
+              - name: BACKUP_S3_BUCKET
+                valueFrom:
+                  configMapKeyRef:
+                    name: cluster-metadata
+                    key: BACKUP_S3_BUCKET
+              - name: BACKUP_S3_OBJECT
+                valueFrom:
+                  configMapKeyRef:
+                    name: cluster-metadata
+                    key: BACKUP_S3_OBJECT
+              - name: BACKUP_KMS_ID
+                valueFrom:
+                  configMapKeyRef:
+                    name: cluster-metadata
+                    key: BACKUP_KMS_ID
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/role: master
+          tolerations:
+            - key: "node-role.kubernetes.io/master"
+              operator: "Exists"
+              effect: "NoSchedule"
+          volumes:
+            - name: etcd-backup-script
+              configMap:
+                name: etcd-backup-script

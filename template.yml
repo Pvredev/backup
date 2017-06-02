@@ -1,0 +1,41 @@
+Parameters:
+  S3BucketName:
+    Description: The name of the S3 Bucket
+    Type: String
+
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      LifecycleConfiguration:
+        Rules:
+        - Id: backup-etcd
+          Prefix: backup/
+          Status: Enabled
+          ExpirationInDays: '7'
+      VersioningConfiguration:
+        Status: Enabled
+    DeletionPolicy: Retain
+  S3Policy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: S3Bucket
+      PolicyDocument:
+        Statement:
+          -
+            Action: s3:PutObject
+            Sid: "DenyUnencryptedObjects"
+            Effect: "Deny"
+            Principal: "*"
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: "aws:kms"
+            Resource:
+              Fn::Join:
+              - ""
+              -
+                - "arn:aws:s3:::"
+                - Ref: S3BucketName
+                - /*

@@ -1,0 +1,59 @@
+---
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: artifactory-nginx
+  namespace: default
+  labels:
+    k8s-app: artifactory-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: artifactory-nginx
+  template:
+    metadata:
+      labels:
+        k8s-app: artifactory-nginx
+        name: artifactory-nginx
+    spec:
+      containers:
+      - image: imyob-docker-private.jfrog.io/nginx:1.12.0
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        name: artifactory-nginx
+        ports:
+        - containerPort: 80
+          name: web
+      imagePullSecrets:
+      - name: <SECRET_KEY_NAME-:artifactory-pull-secret>
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: artifactory-nginx
+  namespace: default
+spec:
+  selector:
+    k8s-app: artifactory-nginx
+  ports:
+  - port: 80
+    targetPort: 80
+
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: artifactory-nginx
+  namespace: default
+spec:
+  rules:
+  - host: artifactory-nginx.k8s.ex-central-development.myob.com
+    http:
+      paths:
+      - backend:
+          serviceName: artifactory-nginx
+          servicePort: 80

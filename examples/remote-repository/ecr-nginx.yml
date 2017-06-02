@@ -1,0 +1,57 @@
+---
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: ecr-nginx
+  namespace: default
+  labels:
+    k8s-app: ecr-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: ecr-nginx
+  template:
+    metadata:
+      labels:
+        k8s-app: ecr-nginx
+        name: ecr-nginx
+    spec:
+      containers:
+      - image: <remote-aws-account-id>.dkr.ecr.<repository region>.amazonaws.com/<image name>:<image tag>
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        name: ecr-nginx
+        ports:
+        - containerPort: 80
+          name: web
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ecr-nginx
+  namespace: default
+spec:
+  selector:
+    k8s-app: ecr-nginx
+  ports:
+  - port: 80
+    targetPort: 80
+
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ecr-nginx
+  namespace: default
+spec:
+  rules:
+  - host: ecr-nginx.k8s.ex-central-development.myob.com
+    http:
+      paths:
+      - backend:
+          serviceName: ecr-nginx
+          servicePort: 80

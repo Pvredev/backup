@@ -1,0 +1,57 @@
+---
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: example-nginx
+  namespace: default
+  labels:
+    k8s-app: example-nginx
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      k8s-app: example-nginx
+  template:
+    metadata:
+      labels:
+        k8s-app: example-nginx
+        name: example-nginx
+    spec:
+      containers:
+      - image: nginx
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        name: example-nginx
+        ports:
+        - containerPort: 80
+          name: web
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: example-nginx
+  namespace: default
+spec:
+  selector:
+    k8s-app: example-nginx
+  ports:
+  - port: 80
+    targetPort: 80
+
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: example-nginx
+  namespace: default
+spec:
+  rules:
+  - host: example-nginx.jupiter.platform.myob.com
+    http:
+      paths:
+      - backend:
+          serviceName: example-nginx
+          servicePort: 80

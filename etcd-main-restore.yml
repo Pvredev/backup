@@ -1,0 +1,85 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: etcd-main-restore
+  namespace: kube-system
+---
+
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: etcd-restore-script
+  namespace: kube-system
+data:
+  restore.sh: |
+    #!/bin/bash
+
+    BACKUP_S3_BUCKET=${BACKUP_S3_BUCKET}
+    RESTORE_S3_OBJECT=${RESTORE_S3_OBJECT}
+
+    if  [ -z $BACKUP_S3_BUCKET ]; then
+        echo "Please provided BACKUP_S3_BUCKET."
+        exit 1
+    fi
+
+    if  [ -z $RESTORE_S3_OBJECT ]; then
+        echo "Please provided RESTORE_S3_OBJECT."
+        exit 1
+    fi
+
+    aws s3 cp --sse aws:kms s3://$BACKUP_S3_BUCKET/$RESTORE_S3_OBJECT /tmp/restore.properties
+
+    while read line; do
+      KEY=$(echo $line | awk -F'=' '{print $1}')
+      VALUE=$(echo $line | awk -F'=' '{print $2}')
+      echo "KEY=$KEY"
+      etcdctl set $KEY "$VALUE"
+    done < /tmp/restore.properties
+
+    echo "Restore $RESTORE_S3_OBJECT etcd data done"
+
+    exit 0
+
+---
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: etcd-main-restore
+  namespace: kube-system
+spec:
+  template:
+    metadata:
+      name: etcd-main-restore
+    spec:
+      hostNetwork: true
+      serviceAccountName: etcd-main-restore
+      containers:
+      - name: etcd-main-restore
+        image: myobplatform/aws-etcdctl:v1.0.0
+        volumeMounts:
+        - name: etcd-restore-script
+          mountPath: /script
+        command: ["/bin/bash"]
+        args: ["-c", "chmod +x /script/restore.sh && /script/restore.sh"]
+        env:
+          - name: BACKUP_S3_BUCKET
+            valueFrom:
+              configMapKeyRef:
+                name: cluster-metadata
+                key: BACKUP_S3_BUCKET
+          - name: RESTORE_S3_OBJECT
+            value:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/role: master
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+      volumes:
+        - name: etcd-restore-script
+          configMap:
+            name: etcd-restore-script
